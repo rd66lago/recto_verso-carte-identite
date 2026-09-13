@@ -5,11 +5,13 @@ import os
 import json
 import platform
 import threading
+import tempfile
 from datetime import datetime
 from PIL import Image, ImageTk, ImageChops, ImageFilter, ImageEnhance, ImageDraw, ImageFont
 
-# --- Fichier de configuration ---
+# --- Fichier de configuration et dossiers temporaires ---
 CONFIG_FILE = os.path.expanduser("~/.scanner_id_config.json")
+TEMP_DIR = tempfile.gettempdir()
 
 # --- Thème unique "clair_moderne" ---
 THEME = {
@@ -46,9 +48,9 @@ class ScannerIDApp:
         
         self.appliquer_couleurs_theme()
 
-        self.recto_path = "/tmp/id_recto.png"
-        self.verso_path = "/tmp/id_verso.png"
-        self.temp_print_pdf = "/tmp/id_print_temp.pdf"
+        self.recto_path = os.path.join(TEMP_DIR, "id_recto.png")
+        self.verso_path = os.path.join(TEMP_DIR, "id_verso.png")
+        self.temp_print_pdf = os.path.join(TEMP_DIR, "id_print_temp.pdf")
         
         self.scanners_list = {}
         self.sources_choix = ["Vitre (Flatbed)", "Auto (Par défaut)", "Chargeur auto (ADF)"]
@@ -58,7 +60,7 @@ class ScannerIDApp:
         self.selected_layer_index = -1
         self.next_layer_id = 0
 
-        # --- Variables du filigrane (pour le panneau de création) ---
+        # --- Variables du filigrane ---
         self.watermark_text = "Filigrane"
         self.watermark_font_family = "Arial"
         self.watermark_size = 72
@@ -68,19 +70,19 @@ class ScannerIDApp:
 
         # Dimensions de l'aperçu
         self.canvas_w = 500
-        self.canvas_h = 707  # ratio A4
+        self.canvas_h = 707
         self.scale_factor = self.canvas_w / 2480.0
 
         # Drag & drop
         self.drag_data = {"item": None, "x": 0, "y": 0, "layer_index": -1}
 
-        self.charger_config()  # pour scanner et source sauvegardés
+        self.charger_config()
         self.setup_menu()
         self.setup_style()
         self.setup_ui()
         self.detecter_scanners()
 
-    # --- Configuration (chargement/sauvegarde) ---
+    # --- Configuration ---
     def charger_config(self):
         if os.path.exists(CONFIG_FILE):
             try:
@@ -170,8 +172,8 @@ class ScannerIDApp:
 
         tk.Label(fenetre_about, text="Scanner d'Identité", bg=self.BG_COLOR, fg=self.TEXT_COLOR, font=("Helvetica", 16, "bold")).pack(pady=(25, 5))
         tk.Label(fenetre_about, text="Outil pro de numérisation, recadrage,\nrotation et assemblage PDF interactif.", bg=self.BG_COLOR, fg=self.TEXT_COLOR, font=("Helvetica", 10)).pack(pady=5)
-        tk.Label(fenetre_about, text="Version 1.025", bg=self.BG_COLOR, fg=self.TEXT_COLOR, font=("Helvetica", 11, "bold")).pack(pady=(10, 5))
-        tk.Label(fenetre_about, text="Créé par Durand Joël\nContact : rd66lago@gmail.com", bg=self.BG_COLOR, fg=self.TEXT_COLOR, font=("Helvetica", 10)).pack(pady=5)
+        tk.Label(fenetre_about, text="Version 1.026", bg=self.BG_COLOR, fg=self.TEXT_COLOR, font=("Helvetica", 11, "bold")).pack(pady=(10, 5))
+        tk.Label(fenetre_about, text="Créé par Durand Joël\nContact : stubfox@free.fr", bg=self.BG_COLOR, fg=self.TEXT_COLOR, font=("Helvetica", 10)).pack(pady=5)
         tk.Label(fenetre_about, text="Licence : Logiciel libre de droit", bg=self.BG_COLOR, fg=self.TEXT_COLOR, font=("Helvetica", 10, "italic")).pack(pady=5)
 
         btn_fermer = tk.Button(fenetre_about, text="Fermer", font=("Helvetica", 10, "bold"), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=25, pady=8, command=fenetre_about.destroy)
@@ -179,21 +181,20 @@ class ScannerIDApp:
         btn_fermer.bind("<Enter>", lambda e: btn_fermer.config(bg=self.BTN_HOVER))
         btn_fermer.bind("<Leave>", lambda e: btn_fermer.config(bg=self.BTN_COLOR))
 
-    # --- Interface utilisateur : 3 zones horizontales ---
+    # --- Interface utilisateur ---
     def setup_ui(self):
-        # Panneau principal avec 3 colonnes : gauche (haut et bas), droite (aperçu)
         main_frame = tk.Frame(self.root, bg=self.BG_COLOR)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
 
-        # Colonne de gauche (scanner + calques)
+        # Colonne de gauche
         left_frame = tk.Frame(main_frame, bg=self.BG_COLOR)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-        # --- Partie haute : scanner ---
+        # --- Partie haute : scanner / import ---
         top_frame = tk.Frame(left_frame, bg=self.MENU_BG, padx=15, pady=15)
         top_frame.pack(fill=tk.X, pady=(0, 10))
 
-        tk.Label(top_frame, text="Numérisation", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 12, "bold")).pack(anchor="w", pady=(0, 5))
+        tk.Label(top_frame, text="Numérisation / Import", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 12, "bold")).pack(anchor="w", pady=(0, 5))
 
         # Ligne scanner
         row1 = tk.Frame(top_frame, bg=self.MENU_BG)
@@ -218,7 +219,7 @@ class ScannerIDApp:
             self.combo_source.current(0)
         self.combo_source.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Ligne réglages luminosité/contraste
+        # Ligne réglages
         row3 = tk.Frame(top_frame, bg=self.MENU_BG)
         row3.pack(fill=tk.X, pady=3)
         tk.Label(row3, text="Lum./Cont.", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 10), width=10, anchor="w").pack(side=tk.LEFT)
@@ -227,22 +228,36 @@ class ScannerIDApp:
         self.slider_cont = ttk.Scale(row3, from_=0.5, to=1.5, value=1.0, orient=tk.HORIZONTAL, command=lambda v: self.ajuster_images())
         self.slider_cont.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
 
-        # Ligne boutons scan et rotation
-        row4 = tk.Frame(top_frame, bg=self.MENU_BG)
-        row4.pack(fill=tk.X, pady=5)
-        btn_recto = tk.Button(row4, text="Scanner Recto", font=("Helvetica", 10, "bold"), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=15, pady=5, command=self.scan_recto)
+        # --- Ligne Recto : scan + import + rotation ---
+        row_recto = tk.Frame(top_frame, bg=self.MENU_BG)
+        row_recto.pack(fill=tk.X, pady=5)
+        tk.Label(row_recto, text="Recto :", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 10, "bold"), width=10, anchor="w").pack(side=tk.LEFT)
+        btn_recto = tk.Button(row_recto, text="Scanner", font=("Helvetica", 10, "bold"), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=15, pady=5, command=self.scan_recto)
         btn_recto.pack(side=tk.LEFT, padx=2)
         btn_recto.bind("<Enter>", lambda e: btn_recto.config(bg=self.BTN_HOVER))
         btn_recto.bind("<Leave>", lambda e: btn_recto.config(bg=self.BTN_COLOR))
-        btn_rot_recto = tk.Button(row4, text="↺ Recto", font=("Helvetica", 9), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=10, pady=5, command=lambda: self.pivoter_carte("recto"))
+        btn_import_recto = tk.Button(row_recto, text="📁 Importer", font=("Helvetica", 10), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=12, pady=5, command=self.importer_recto)
+        btn_import_recto.pack(side=tk.LEFT, padx=2)
+        btn_import_recto.bind("<Enter>", lambda e: btn_import_recto.config(bg=self.BTN_HOVER))
+        btn_import_recto.bind("<Leave>", lambda e: btn_import_recto.config(bg=self.BTN_COLOR))
+        btn_rot_recto = tk.Button(row_recto, text="↺ Pivoter", font=("Helvetica", 9), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=10, pady=5, command=lambda: self.pivoter_carte("recto"))
         btn_rot_recto.pack(side=tk.LEFT, padx=2)
         btn_rot_recto.bind("<Enter>", lambda e: btn_rot_recto.config(bg=self.BTN_HOVER))
         btn_rot_recto.bind("<Leave>", lambda e: btn_rot_recto.config(bg=self.BTN_COLOR))
-        btn_verso = tk.Button(row4, text="Scanner Verso", font=("Helvetica", 10, "bold"), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=15, pady=5, command=self.scan_verso)
+
+        # --- Ligne Verso : scan + import + rotation ---
+        row_verso = tk.Frame(top_frame, bg=self.MENU_BG)
+        row_verso.pack(fill=tk.X, pady=5)
+        tk.Label(row_verso, text="Verso :", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 10, "bold"), width=10, anchor="w").pack(side=tk.LEFT)
+        btn_verso = tk.Button(row_verso, text="Scanner", font=("Helvetica", 10, "bold"), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=15, pady=5, command=self.scan_verso)
         btn_verso.pack(side=tk.LEFT, padx=2)
         btn_verso.bind("<Enter>", lambda e: btn_verso.config(bg=self.BTN_HOVER))
         btn_verso.bind("<Leave>", lambda e: btn_verso.config(bg=self.BTN_COLOR))
-        btn_rot_verso = tk.Button(row4, text="↺ Verso", font=("Helvetica", 9), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=10, pady=5, command=lambda: self.pivoter_carte("verso"))
+        btn_import_verso = tk.Button(row_verso, text="📁 Importer", font=("Helvetica", 10), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=12, pady=5, command=self.importer_verso)
+        btn_import_verso.pack(side=tk.LEFT, padx=2)
+        btn_import_verso.bind("<Enter>", lambda e: btn_import_verso.config(bg=self.BTN_HOVER))
+        btn_import_verso.bind("<Leave>", lambda e: btn_import_verso.config(bg=self.BTN_COLOR))
+        btn_rot_verso = tk.Button(row_verso, text="↺ Pivoter", font=("Helvetica", 9), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=10, pady=5, command=lambda: self.pivoter_carte("verso"))
         btn_rot_verso.pack(side=tk.LEFT, padx=2)
         btn_rot_verso.bind("<Enter>", lambda e: btn_rot_verso.config(bg=self.BTN_HOVER))
         btn_rot_verso.bind("<Leave>", lambda e: btn_rot_verso.config(bg=self.BTN_COLOR))
@@ -259,7 +274,6 @@ class ScannerIDApp:
         bottom_frame = tk.Frame(left_frame, bg=self.MENU_BG, padx=15, pady=15)
         bottom_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Séparer en deux colonnes : calques à gauche, filigrane à droite
         bottom_left = tk.Frame(bottom_frame, bg=self.MENU_BG)
         bottom_left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
         bottom_right = tk.Frame(bottom_frame, bg=self.MENU_BG)
@@ -271,7 +285,6 @@ class ScannerIDApp:
         self.listbox_layers.pack(fill=tk.X, pady=5)
         self.listbox_layers.bind('<<ListboxSelect>>', self.on_layer_selected)
 
-        # Contrôles des calques
         btn_frame = tk.Frame(bottom_left, bg=self.MENU_BG)
         btn_frame.pack(fill=tk.X, pady=2)
         btn_up = tk.Button(btn_frame, text="▲", font=("Helvetica", 10), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=5, command=self.move_layer_up)
@@ -287,10 +300,9 @@ class ScannerIDApp:
         self.opacity_slider = ttk.Scale(bottom_left, from_=0.0, to=1.0, value=1.0, orient=tk.HORIZONTAL, command=self.on_opacity_change)
         self.opacity_slider.pack(fill=tk.X, pady=2)
 
-        # --- Filigrane (création de nouveaux filigranes) ---
+        # --- Filigrane ---
         tk.Label(bottom_right, text="Créer un filigrane", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 12, "bold")).pack(anchor="w", pady=(0, 5))
 
-        # Type
         wm_type_frame = tk.Frame(bottom_right, bg=self.MENU_BG)
         wm_type_frame.pack(fill=tk.X, pady=2)
         self.wm_type_var = tk.StringVar(value="texte")
@@ -299,7 +311,6 @@ class ScannerIDApp:
         rb_image = tk.Radiobutton(wm_type_frame, text="Image", variable=self.wm_type_var, value="image", bg=self.MENU_BG, fg=self.TEXT_COLOR, selectcolor=self.BG_COLOR, command=self.on_watermark_type_change)
         rb_image.pack(side=tk.LEFT, padx=2)
 
-        # Texte
         self.wm_text_frame = tk.Frame(bottom_right, bg=self.MENU_BG)
         self.wm_text_frame.pack(fill=tk.X, pady=2)
         tk.Label(self.wm_text_frame, text="Texte:", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 9)).pack(side=tk.LEFT)
@@ -307,7 +318,6 @@ class ScannerIDApp:
         self.wm_text_entry.insert(0, "Filigrane")
         self.wm_text_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
-        # Police et taille
         font_frame = tk.Frame(bottom_right, bg=self.MENU_BG)
         font_frame.pack(fill=tk.X, pady=2)
         tk.Label(font_frame, text="Police:", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 9)).pack(side=tk.LEFT)
@@ -321,7 +331,6 @@ class ScannerIDApp:
         self.wm_size_spin.insert(0, "72")
         self.wm_size_spin.pack(side=tk.LEFT, padx=5)
 
-        # Angle et couleur
         angle_color_frame = tk.Frame(bottom_right, bg=self.MENU_BG)
         angle_color_frame.pack(fill=tk.X, pady=2)
         tk.Label(angle_color_frame, text="Angle:", bg=self.MENU_BG, fg=self.TEXT_COLOR, font=("Helvetica", 9)).pack(side=tk.LEFT)
@@ -332,14 +341,12 @@ class ScannerIDApp:
         btn_color = tk.Button(angle_color_frame, text="Couleur", font=("Helvetica", 9), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=8, command=self.choose_watermark_color)
         btn_color.pack(side=tk.LEFT, padx=5)
 
-        # Image
         self.wm_image_frame = tk.Frame(bottom_right, bg=self.MENU_BG)
         btn_load_wm_image = tk.Button(self.wm_image_frame, text="Charger image", font=("Helvetica", 9), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=8, command=self.load_watermark_image)
         btn_load_wm_image.pack(side=tk.LEFT, padx=2)
         btn_clear_wm_image = tk.Button(self.wm_image_frame, text="Effacer image", font=("Helvetica", 9), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=8, command=self.clear_watermark_image)
         btn_clear_wm_image.pack(side=tk.LEFT, padx=2)
 
-        # Bouton pour ajouter un filigrane (crée un nouveau calque)
         btn_add_wm = tk.Button(bottom_right, text="Ajouter ce filigrane", font=("Helvetica", 10, "bold"), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=15, pady=6, command=self.add_watermark_layer)
         btn_add_wm.pack(pady=10)
         btn_add_wm.bind("<Enter>", lambda e: btn_add_wm.config(bg=self.BTN_HOVER))
@@ -357,7 +364,6 @@ class ScannerIDApp:
         self.canvas_pdf.bind("<B1-Motion>", self.on_drag)
         self.canvas_pdf.bind("<ButtonRelease-1>", self.on_release)
 
-        # --- Boutons d'action (en bas du panneau droit) ---
         action_frame = tk.Frame(right_frame, bg=self.MENU_BG)
         action_frame.pack(fill=tk.X, pady=(15, 0))
         btn_export = tk.Button(action_frame, text="Exporter PDF", font=("Helvetica", 11, "bold"), bg=self.BTN_COLOR, fg=self.TEXT_COLOR, relief="flat", bd=0, padx=20, pady=8, command=self.export_pdf)
@@ -370,7 +376,6 @@ class ScannerIDApp:
         btn_imprimer.bind("<Enter>", lambda e: btn_imprimer.config(bg=self.BTN_HOVER))
         btn_imprimer.bind("<Leave>", lambda e: btn_imprimer.config(bg=self.BTN_COLOR))
 
-        # Initialisation
         self.layers = []
         self.selected_layer_index = -1
         self.update_layer_listbox()
@@ -451,7 +456,7 @@ class ScannerIDApp:
                 return layer
         return None
 
-    # --- Scan et images ---
+    # --- Scan / Import d'images ---
     def scan_recto(self):
         self.lbl_img_recto.config(text="Numérisation...")
         self.root.update()
@@ -486,6 +491,62 @@ class ScannerIDApp:
         else:
             self.lbl_img_verso.config(text="[ Échec ]")
 
+    def importer_recto(self):
+        self.importer_image_face("recto")
+
+    def importer_verso(self):
+        self.importer_image_face("verso")
+
+    def importer_image_face(self, face):
+        path = filedialog.askopenfilename(
+            title=f"Importer l'image du {face}",
+            filetypes=[
+                ("Images (JPG, PNG, BMP, TIFF)", "*.jpg *.jpeg *.png *.bmp *.tif *.tiff"),
+                ("Tous les fichiers", "*.*")
+            ]
+        )
+        if not path:
+            return
+        try:
+            img = Image.open(path).convert("RGB")
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d'ouvrir l'image :\n{e}")
+            return
+
+        img = self.preparer_image_importee(img)
+
+        detourer = messagebox.askyesno(
+            "Détourage",
+            "Voulez-vous détourer automatiquement l'image\n(supprimer les marges blanches) ?"
+        )
+        if detourer:
+            img = self.detourer_image(img, marge=15)
+
+        layer = self.find_layer_by_type(face)
+        if layer is None:
+            if face == "recto":
+                layer = Layer("Recto", img, x=100, y=80, opacity=1.0, visible=True, layer_type="recto")
+            else:
+                layer = Layer("Verso", img, x=100, y=280, opacity=1.0, visible=True, layer_type="verso")
+            self.add_layer(layer)
+        else:
+            layer.image = img
+            layer.visible = True
+            self.rafraichir_apercu_pdf()
+
+        if face == "recto":
+            self.afficher_vignette(img, self.lbl_img_recto)
+        else:
+            self.afficher_vignette(img, self.lbl_img_verso)
+
+    def preparer_image_importee(self, img):
+        max_dim = 1500
+        if max(img.size) > max_dim:
+            ratio = max_dim / max(img.size)
+            new_size = (int(img.width * ratio), int(img.height * ratio))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+        return img
+
     def pivoter_carte(self, face):
         layer = self.find_layer_by_type(face)
         if layer and layer.image:
@@ -517,21 +578,43 @@ class ScannerIDApp:
         im = enhancer_cont.enhance(cont)
         return im
 
-    # --- Détection scanners ---
+    # --- Détection scanners (Windows WIA / Linux SANE) ---
     def detecter_scanners(self):
         self.combo_scanners.set("Recherche...")
         self.root.update()
+        
         def tache_recherche():
             scanners_trouves = {}
-            try:
-                resultat = subprocess.run(["scanimage", "-f", "%d|%v %m%n"], capture_output=True, text=True, check=True)
-                lignes = [l for l in resultat.stdout.strip().split("\n") if "|" in l]
-                for ligne in lignes:
-                    dev_id, nom_lisible = ligne.split("|", 1)
-                    scanners_trouves[nom_lisible.strip()] = dev_id.strip()
-            except Exception:
-                pass
-            self.root.after(0, self.maj_interface_scanners, scanners_trouves)
+            systeme = platform.system().lower()
+            
+            if "windows" in systeme:
+                try:
+                    import pythoncom
+                    pythoncom.CoInitialize()
+                    from win32com.client import Dispatch
+                    manager = Dispatch("WIA.DeviceManager")
+                    for i in range(1, manager.DeviceInfos.Count + 1):
+                        dev_info = manager.DeviceInfos.Item(i)
+                        if dev_info.Type == 1:
+                            nom = dev_info.Properties("Name").Value
+                            dev_id = dev_info.DeviceID
+                            scanners_trouves[nom] = dev_id
+                    pythoncom.CoUninitialize()
+                except Exception as e:
+                    print(f"Erreur WIA : {e}")
+            else:
+                try:
+                    resultat = subprocess.run(["scanimage", "-f", "%d|%v %m%n"], capture_output=True, text=True, check=True)
+                    lignes = [l for l in resultat.stdout.strip().split("\n") if "|" in l]
+                    for ligne in lignes:
+                        dev_id, nom_lisible = ligne.split("|", 1)
+                        scanners_trouves[nom_lisible.strip()] = dev_id.strip()
+                except Exception:
+                    pass
+                    
+            donnees = dict(scanners_trouves)
+            self.root.after(0, lambda: self.maj_interface_scanners(donnees))
+
         threading.Thread(target=tache_recherche, daemon=True).start()
 
     def maj_interface_scanners(self, scanners_trouves):
@@ -544,7 +627,11 @@ class ScannerIDApp:
             else:
                 self.combo_scanners.current(0)
         else:
-            self.combo_scanners.set("Aucun scanner")
+            systeme = platform.system().lower()
+            if "windows" in systeme:
+                self.combo_scanners.set("Aucun scanner WIA détecté")
+            else:
+                self.combo_scanners.set("Aucun scanner (SANE)")
 
     def obtenir_scanner_selectionne(self):
         nom = self.combo_scanners.get()
@@ -555,40 +642,77 @@ class ScannerIDApp:
         if not scanner_id:
             messagebox.showwarning("Attention", "Sélectionnez un scanner.")
             return False
-        choix_source = self.combo_source.get()
+            
         self.sauvegarder_config(afficher_message=False)
-        cmd_base = ["scanimage", "-d", scanner_id, "--resolution", "300", "--mode", "Color", "--format=png"]
-        cmd_list = []
-        if choix_source == "Vitre (Flatbed)":
-            cmd_list = [cmd_base + ["--source", "Flatbed"]]
-        elif choix_source == "Chargeur auto (ADF)":
-            cmd_list = [cmd_base + ["--source", "ADF"]]
-        else:
-            cmd_list = [cmd_base]
-        for index, cmd in enumerate(cmd_list):
+        systeme = platform.system().lower()
+        
+        if "windows" in systeme:
             try:
-                with open(output_path, "wb") as f:
-                    subprocess.run(cmd, stdout=f, check=True)
-                return True
-            except subprocess.CalledProcessError as e:
-                if "busy" in str(e).lower():
-                    messagebox.showerror("Scanner occupé", "Le scanner est occupé.")
+                import pythoncom
+                pythoncom.CoInitialize()
+                from win32com.client import Dispatch
+                manager = Dispatch("WIA.DeviceManager")
+                
+                selected_device = None
+                for i in range(1, manager.DeviceInfos.Count + 1):
+                    dev_info = manager.DeviceInfos.Item(i)
+                    if dev_info.DeviceID == scanner_id:
+                        selected_device = dev_info.Connect()
+                        break
+                
+                if not selected_device:
+                    messagebox.showerror("Erreur", "Impossible de se connecter au scanner.")
+                    pythoncom.CoUninitialize()
                     return False
-                if index == 0 and len(cmd) > len(cmd_base):
-                    try:
-                        with open(output_path, "wb") as f:
-                            subprocess.run(cmd_base, stdout=f, check=True)
-                        return True
-                    except subprocess.CalledProcessError:
-                        pass
-                messagebox.showerror("Erreur", "Scan échoué.")
-                return False
+                
+                item = selected_device.Items[1]
+                dialog = Dispatch("WIA.CommonDialog")
+                image_file = dialog.ShowTransfer(item)
+                image_file.SaveFile(output_path)
+                pythoncom.CoUninitialize()
+                return True
+                
             except Exception as e:
-                messagebox.showerror("Erreur", f"Erreur : {e}")
+                messagebox.showerror("Erreur WIA", f"Échec de la numérisation sous Windows :\n{e}")
                 return False
+        else:
+            choix_source = self.combo_source.get()
+            cmd_base = ["scanimage", "-d", scanner_id, "--resolution", "300", "--mode", "Color", "--format=png"]
+            cmd_list = []
+            if choix_source == "Vitre (Flatbed)":
+                cmd_list = [cmd_base + ["--source", "Flatbed"]]
+            elif choix_source == "Chargeur auto (ADF)":
+                cmd_list = [cmd_base + ["--source", "ADF"]]
+            else:
+                cmd_list = [cmd_base]
+                
+            for index, cmd in enumerate(cmd_list):
+                try:
+                    with open(output_path, "wb") as f:
+                        subprocess.run(cmd, stdout=f, check=True)
+                    return True
+                except subprocess.CalledProcessError as e:
+                    if "busy" in str(e).lower():
+                        messagebox.showerror("Scanner occupé", "Le scanner est occupé.")
+                        return False
+                    if index == 0 and len(cmd) > len(cmd_base):
+                        try:
+                            with open(output_path, "wb") as f:
+                                subprocess.run(cmd_base, stdout=f, check=True)
+                            return True
+                        except subprocess.CalledProcessError:
+                            pass
+                    messagebox.showerror("Erreur", "Scan échoué.")
+                    return False
+                except Exception as e:
+                    messagebox.showerror("Erreur", f"Erreur : {e}")
+                    return False
 
     def detourer_carte(self, path_img, marge=15):
         im = Image.open(path_img).convert("RGB")
+        return self.detourer_image(im, marge)
+
+    def detourer_image(self, im, marge=15):
         bg = Image.new("RGB", im.size, (255, 255, 255))
         diff = ImageChops.difference(im, bg).convert("L")
         diff = diff.filter(ImageFilter.MedianFilter(size=5))
@@ -602,7 +726,7 @@ class ScannerIDApp:
             return im.crop((left, top, right, bottom))
         return im
 
-    # --- Filigrane : création de calques multiples ---
+    # --- Filigrane ---
     def on_watermark_type_change(self):
         if self.wm_type_var.get() == "texte":
             self.wm_text_frame.pack(fill=tk.X, pady=2)
@@ -639,27 +763,27 @@ class ScannerIDApp:
 
     def create_watermark_text(self):
         texte, police, taille, angle = self.get_watermark_params()
-        font = None
+        font_obj = None
         font_candidates = [police, "Arial", "Helvetica", "DejaVuSans", "LiberationSans", "Verdana", "Tahoma", "Times New Roman", "Courier New"]
         for fname in font_candidates:
             try:
-                font = ImageFont.truetype(fname, taille)
+                font_obj = ImageFont.truetype(fname, taille)
                 break
             except:
                 continue
-        if font is None:
-            font = ImageFont.load_default()
+        if font_obj is None:
+            font_obj = ImageFont.load_default()
             scale = taille / 12.0
         else:
             scale = 1.0
 
         dummy = Image.new('RGBA', (1,1))
         draw = ImageDraw.Draw(dummy)
-        bbox = draw.textbbox((0,0), texte, font=font)
+        bbox = draw.textbbox((0,0), texte, font=font_obj)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         img = Image.new('RGBA', (tw + 20, th + 20), (0,0,0,0))
         draw = ImageDraw.Draw(img)
-        draw.text((10, 10), texte, font=font, fill=self.watermark_color)
+        draw.text((10, 10), texte, font=font_obj, fill=self.watermark_color)
         if scale != 1.0:
             new_w = int(img.width * scale)
             new_h = int(img.height * scale)
@@ -675,7 +799,6 @@ class ScannerIDApp:
         return img
 
     def add_watermark_layer(self):
-        """Ajoute un nouveau calque de filigrane à partir des paramètres courants."""
         wm_type = self.wm_type_var.get()
         if wm_type == "texte":
             img = self.create_watermark_text()
@@ -684,29 +807,26 @@ class ScannerIDApp:
         if img is None:
             messagebox.showwarning("Attention", "Aucune image de filigrane sélectionnée.")
             return
-        # Position au centre
         x = (2480 - img.width) // 2
         y = (3508 - img.height) // 2
-        # Générer un nom unique
         count = sum(1 for l in self.layers if l.type == "watermark") + 1
         name = f"Filigrane {count}"
         new_layer = Layer(name, img, x, y, opacity=0.5, visible=True, layer_type="watermark")
         self.add_layer(new_layer)
 
-    # --- Import image comme calque ---
     def import_image_layer(self):
         path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.gif *.tiff")])
         if not path:
             return
         try:
             img = Image.open(path).convert("RGB")
+            img = self.preparer_image_importee(img)
             layer = Layer(f"Image {self.next_layer_id}", img, x=100, y=100, opacity=1.0, visible=True, layer_type="custom")
             self.next_layer_id += 1
             self.add_layer(layer)
         except Exception as e:
             messagebox.showerror("Erreur", f"Impossible d'ouvrir l'image : {e}")
 
-    # --- Nettoyage ---
     def clear_scans(self):
         if os.path.exists(self.recto_path): os.remove(self.recto_path)
         if os.path.exists(self.verso_path): os.remove(self.verso_path)
@@ -724,7 +844,6 @@ class ScannerIDApp:
         self.update_layer_listbox()
         self.rafraichir_apercu_pdf()
 
-    # --- Aperçu et drag & drop ---
     def rafraichir_apercu_pdf(self):
         self.canvas_pdf.delete("all")
         bg = Image.new('RGB', (self.canvas_w, self.canvas_h), 'white')
@@ -784,7 +903,6 @@ class ScannerIDApp:
         self.drag_data["item"] = None
         self.drag_data["layer_index"] = -1
 
-    # --- Génération PDF et impression ---
     def generer_page_a4(self):
         page = Image.new('RGB', (2480, 3508), 'white')
         for layer in self.layers:
