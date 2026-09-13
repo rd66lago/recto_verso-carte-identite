@@ -13,7 +13,7 @@ Application de numérisation, édition et assemblage de documents d'identité (r
 - **Thèmes** : interface « Pure Flat » avec thème clair moderne (par défaut).
 
 ## Installation
-
+   -- 'Je suis en train de prévoir des paquets deb et exe.'
 ### Dépendances
 
 - Python 3.6+
